@@ -1,0 +1,521 @@
+Código fuente
+DDL
+CREATE DATABASE DeviceService
+GO
+USE DeviceService
+GO
+CREATE TABLE Empleado(IdEmp int identity not null,
+                      NomEmp varchar(30) not null,
+					  FchNacEmp date not null,
+					  SueldoEmp money,
+					  TipoEmp char(1) not null,
+					  constraint pk_Empleado primary key(IdEmp),
+					  constraint ck_TipoEmp check(TipoEmp in ('T','C')))
+GO
+CREATE TABLE Producto(IdProd int identity not null,
+                      DscProd varchar(30) not null,
+					  StkProd int,
+					  CostoProd money,
+					  constraint pk_Producto primary key(IdProd))
+GO
+CREATE TABLE Unidad(NumSerie character(10) not null,
+                    IdProd int not null,
+					FchFab date,
+					FchVto date,
+					constraint pk_Unidad primary key(NumSerie,IdProd),
+					constraint fk_ProdUnidad foreign key(IdProd) references Producto(IdProd))
+GO
+CREATE TABLE Repara(IdRepara int identity not null,
+                    NumSerie character(10) not null,
+					IdProd int not null,
+					IdEmp int not null,
+					FchRepara datetime not null,
+					CostoRepara money,
+					StsRepara varchar(20) default 'Iniciado',
+					IdEmpQA int,
+					constraint pk_Repara primary key(IdRepara),
+					constraint uk_Repara unique(NumSerie,IdProd,IdEmp,FchRepara),
+					constraint ck_StsRepara check(StsRepara in ('Iniciado','En testing','Terminado','Cancelado')),
+					constraint fk_UnidadRepara foreign key(NumSerie,IdProd) references Unidad(NumSerie,IdProd),
+					constraint fk_EmpRepara foreign key(IdEmp) references Empleado(IdEmp),
+					constraint fk_EmpQA foreign key(IdEmpQA) references Empleado(IdEmp))
+GO
+CREATE TABLE HistoricoReparacion ( 
+	IdHist INT IDENTITY PRIMARY KEY,
+	IdRepara INT NOT NULL, 
+	NumSerie CHAR(10) NOT NULL, 
+	IdProd INT NOT NULL,
+	EstadoAnterior VARCHAR(20) NOT NULL, 
+	EstadoNuevo VARCHAR(20) NOT NULL, 
+	FchCambio DATETIME DEFAULT GETDATE());
+GO
+CREATE TABLE HistoricoEliminacionReparaciones ( 
+	IdHist INT IDENTITY PRIMARY KEY,
+	IdRepara INT NOT NULL, 
+	NumSerie CHAR(10) NOT NULL,
+	IdProd INT NOT NULL,
+	StsRepara VARCHAR(20) NOT NULL,
+	FchEliminacion DATETIME DEFAULT GETDATE()
+);
+GO
+DML
+USE DeviceService
+GO
+
+-- Insertar Empleados
+INSERT INTO Empleado (NomEmp, FchNacEmp, SueldoEmp, TipoEmp) VALUES
+  ('Juan Pérez',       '1985-02-15',  34000, 'T'),
+  ('María González',   '1990-07-22',  55000, 'T'),
+  ('Diego Fernández',  '1975-11-05',  72000, 'C'),
+  ('Laura Rodríguez',  '1988-03-30',  25000, 'C'),
+  ('Martín López',     '1992-12-12',  65000, 'T'),
+  ('Sofía Martínez',   '1983-08-08',  50000, 'C'),
+  ('Sebastián Gómez',  '1970-01-20',  90000, 'T'),
+  ('Valentina D''Angelo','1995-09-17', 40000, 'T'),
+  ('Camila Silva',     '1993-04-10',  20000, 'C');
+GO
+
+-- Insertar Productos
+INSERT INTO Producto (DscProd, StkProd, CostoProd) VALUES
+  ('Hiperpropulsor X',         10,  1500),
+  ('Motor de Plasma',           5,  2500),
+  ('Escudo Cuántico',           8,  1200),
+  ('Sensor Gravitacional',     15,   800),
+  ('Drone Autónomo Estelar',    3,  5000),
+  ('Nave Interceptor Mk II',    2, 20000),
+  ('Cristal de Energía Zeta',   0,   300);
+GO
+
+-- Insertar Unidades
+INSERT INTO Unidad (NumSerie, IdProd, FchFab, FchVto) VALUES
+  ('HPX0000001',  1, '2023-05-20', '2025-05-20'),
+  ('HPX0000002',  1, '2024-12-01', NULL),
+  ('MPL0000001',  2, '2022-11-11', '2025-11-11'),
+  ('MPL0000002',  2, '2023-07-07', '2024-07-07'),
+  ('ESQ0000001',  3, '2024-03-03', '2026-03-03'),
+  ('SNG0000001',  4, '2025-01-01', '2027-01-01'),
+  ('SNG0000002',  4, '2023-02-02', '2024-02-02'),
+  ('DAS0000001',  5, '2025-06-01', NULL),
+  ('NIM0000001',  6, '2024-08-08', '2026-08-08'),
+  ('CEZ0000001',  7, '2023-03-03', '2025-03-03');
+GO
+
+-- Insertar Reparaciones
+INSERT INTO Repara (NumSerie, IdProd, IdEmp, FchRepara,           CostoRepara, StsRepara,     IdEmpQA) VALUES
+  -- Producto 4, unidad SNG0000001, Juan Pérez (IdEmp=1)
+  ('SNG0000001', 4, 1, '2025-01-05 08:00:00',  150, 'En testing',    7),
+  -- Producto 1, unidad HPX0000001, Sofía Martínez (IdEmp=6)
+  ('HPX0000001', 1, 6, '2025-02-01 12:00:00',   50, 'Iniciado',      NULL),
+  -- Producto 3, unidad ESQ0000001, Juan Pérez (dos reparaciones el mismo día)
+  ('ESQ0000001', 3, 1, '2025-02-10 11:00:00',  300, 'Terminado',     2),
+  ('ESQ0000001', 3, 1, '2025-02-10 15:00:00',   20, 'Iniciado',      NULL),
+  -- Producto 3, unidad ESQ0000001, Diego Fernández (IdEmp=2 en la FK de QA)
+  ('ESQ0000001', 3, 2, '2025-03-01 10:00:00',   30, 'Terminado',     5),
+  -- Producto 4, unidad SNG0000002, Diego Fernández
+  ('SNG0000002', 4, 3, '2025-03-05 14:00:00',  100, 'Cancelado',     NULL),
+  -- Producto 2, unidad MPL0000001, Juan Pérez
+  ('MPL0000001', 2, 1, '2025-03-20 14:30:00',  200, 'Terminado',     5),
+  -- Producto 2, unidad MPL0000001, Diego Fernández
+  ('MPL0000001', 2, 3, '2025-03-20 16:00:00',   50, 'Cancelado',     NULL),
+  -- Producto 1, unidad HPX0000001, Juan Pérez
+  ('HPX0000001', 1, 1, '2025-04-01 09:00:00',  120, 'Terminado',     2),
+  -- Producto 2, unidad MPL0000001, Sebastián Gómez (IdEmp=7)
+  ('MPL0000001', 2, 7, '2025-04-01 14:00:00',  250, 'Terminado',     2),
+  -- Producto 1, unidad HPX0000002, María González (IdEmp=2)
+  ('HPX0000002', 1, 2, '2025-04-02 10:00:00',  110, 'Terminado',     1),
+  -- Producto 4, unidad SNG0000001, Valentina D'Angelo (IdEmp=8)
+  ('SNG0000001', 4, 8, '2025-04-10 10:00:00',  120, 'En testing',    1),
+  -- Producto 6, unidad NIM0000001, Juan Pérez
+  ('NIM0000001', 6, 1, '2025-04-20 09:30:00',  400, 'Terminado',     2),
+  -- Producto 2, unidad MPL0000002, María González
+  ('MPL0000002', 2, 2, '2025-05-01 09:00:00',   70, 'Iniciado',      NULL),
+  -- Producto 7, unidad CEZ0000001, Juan Pérez
+  ('CEZ0000001', 7, 1, '2025-05-10 13:00:00',   90, 'Cancelado',     NULL),
+  -- Producto 5, unidad DAS0000001, Laura Rodríguez (IdEmp=4)
+  ('DAS0000001', 5, 4, '2025-05-20 16:00:00',  200, 'Terminado',     2),
+  -- Producto 5, unidad DAS0000001, Juan Pérez
+  ('DAS0000001', 5, 1, '2025-06-01 12:00:00', 1000, 'Iniciado',      NULL),
+  -- Producto 6, unidad NIM0000001, Martín López (IdEmp=5)
+  ('NIM0000001', 6, 5, '2025-06-02 08:00:00',  500, 'Iniciado',      NULL),
+  -- Producto 7, unidad CEZ0000001, Martín López
+  ('CEZ0000001', 7, 5, '2025-06-03 09:00:00',  150, 'En testing',    3);
+GO
+
+Consultas SQL
+--1 Indices que consideramos utiles para las consultas:
+--Tabla Producto:
+create index idx_producto_DscProd on Producto(DscProd);
+
+--Tabla Empleado:
+create index idx_empleado_SueldoEmp on Empleado(SueldoEmp)
+create index idx_empleado_TipoEmp on Empleado(TipoEmp)
+
+--Tabla Unidad
+create index idx_unidad_IdProd on Unidad(IdProd)
+create index idx_unidad_NumSerie on Unidad(NumSerie)
+
+--Tabla Repara
+create index idx_Repara_IdEmp on Repara(IdEmp);
+create index idx_Repara_CostoRepara on Repara(CostoRepara);
+create index idx_Repara_StsRepara on Repara(StsRepara);
+create index idx_Repara_FchRepara on Repara(FchRepara);
+
+
+--3 Implementar las consultas SQL
+
+--Consulta a.
+Select 
+p.IdProd as [Codigo Producto],
+p.DscProd as [Descripcion],
+(SELECT COUNT(*) 
+     FROM Unidad u, Repara r 
+     WHERE u.NumSerie = r.NumSerie and u.IdProd = r.IdProd and u.IdProd = p.IdProd AND r.IdEmpQA IS NOT NULL) as [Reparaciones con control de calidad],
+(SELECT COUNT(*) 
+     FROM Unidad u, Repara r
+     WHERE u.NumSerie = r.NumSerie and u.IdProd = r.IdProd and  u.IdProd = p.IdProd AND r.IdEmpQA IS NULL) as [Reparaciones sin control de calidad],
+(SELECT COUNT(*) 
+     FROM Unidad u, Repara r
+     WHERE u.NumSerie = r.NumSerie and u.IdProd = r.IdProd and u.IdProd = p.IdProd AND r.CostoRepara > 100) as [Reparaciones > $100]
+From 
+    Producto p;
+
+
+--Consulta b.
+Select top 1
+	e.*,
+    count(r.IdRepara) as 'Reparaciones Realizadas'
+From Empleado e, Repara r
+where e.IdEmp = r.IdEmp
+Group by e.IdEmp, e.NomEmp, e.FchNacEmp, e.SueldoEmp, e.TipoEmp
+Order by count(r.IdRepara) desc;
+
+
+--Consulta c.
+Select 
+	p.IdProd as [Id Producto],
+	p.DscProd as [Descripcion],
+	p.StkProd as [Stock],
+	p.CostoProd as [Costo],
+    sum(r.CostoRepara) as [Costo total de reparaciones]
+FROM  Producto p, Repara r, Unidad u
+where p.IdProd = u.IdProd and r.NumSerie = u.NumSerie and u.IdProd = r.IdProd
+group by p.IdProd, p.DscProd, p.StkProd, p.CostoProd
+having sum(r.CostoRepara) > 200;
+
+
+
+--Consulta d
+Select top 1
+    p.IdProd as [Id Producto],
+	p.DscProd as [Descripcion],
+	p.StkProd as [Stock],
+	p.CostoProd as [Costo],
+    count(r.IdRepara) as [Numero de reparaciones]
+From Producto p, Repara r, Unidad u
+where p.IdProd = u.IdProd and u.NumSerie = r.NumSerie and u.IdProd = r.IdProd 
+group by p.IdProd, p.DscProd, p.StkProd, p.CostoProd
+order by count(r.IdRepara) desc;
+
+
+--Consulta e.
+-- Clasificación de salario (Alto > 66000, Medio 40000-66000, Bajo < 40000)
+
+	select
+	e.IdEmp as [ID Empleado],
+	e.NomEmp as [Nombre],
+	e.TipoEmp as [Tipo],
+	e.SueldoEmp as [Salario],
+	[Nivel Salarial] = case 
+		when e.SueldoEmp > 66000 then 'Alto'
+		when e.SueldoEmp BETWEEN 40000 AND 66000 then 'Medio'
+		else 'Bajo'
+	end,
+	[Categoria] = case 
+		when e.TipoEmp = 'T' and e.SueldoEmp > 66000 then 'Senior (Tiempo Completo)'
+		when e.TipoEmp = 'T' and e.SueldoEmp between 40000 and 66000 THEN 'Experimentado (Tiempo Completo)'
+		when e.TipoEmp = 'T' then 'Junior (Tiempo Completo)'
+		when e.TipoEmp = 'C' and e.SueldoEmp > 66000 then 'Senior (Contratado)'
+		when e.TipoEmp = 'C' and e.SueldoEmp between 40000 AND 66000 then 'Experimentado (Contratado)'
+		else 'Junior (Contratado)'
+	end,
+	count(r.IdRepara) [Reparaciones Realizadas]
+	from 
+		Empleado e 
+		LEFT JOIN Repara r ON e.IdEmp = r.IdEmp
+	group by
+		e.IdEmp, e.NomEmp, e.TipoEmp, e.SueldoEmp
+	order by 
+		e.SueldoEmp desc,
+		count(r.IdRepara) desc;
+
+
+--Consulta f.
+
+SELECT 
+    ISNULL(CAST(e.IdEmp AS VARCHAR(20)), 'TOTAL GENERAL') AS [ID Empleado],
+    sum(r.CostoRepara) as [Costo Total Reparaciones]
+from Empleado e
+left join  Repara r ON e.IdEmp = r.IdEmp
+group by e.IdEmp with rollup --El ROLLUP muestra los registros detallados, genera filas de subtotales y muestra el total general
+
+--Consulta g
+
+select e.IdEmp, e.NomEmp, e.FchNacEmp, e.SueldoEmp, e.TipoEmp
+from Empleado e, Repara r, Unidad u 
+where e.IdEmp = r.IdEmp and r.NumSerie = u.NumSerie and r.IdProd = u.IdProd and e.TipoEmp = 'T'
+group by e.IdEmp, e.NomEmp, e.FchNacEmp, e.SueldoEmp, e.TipoEmp
+having count(distinct u.IdProd) = (select count(*) from Producto)
+
+Procedure
+
+create procedure spu_RegistrarReparacion
+@NumSerie char(10),
+@IdProd int,
+@IdEmp int,
+@CostoRepara money
+as 
+begin
+
+declare @mensaje varchar(300);
+declare @fecha datetime = getdate();
+
+begin try
+--------
+
+if not exists (select 1 from Unidad u where u.NumSerie = @NumSerie and u.IdProd = @IdProd)
+	begin
+		set @mensaje = 'La Unidad no existe en la tabla unidad'
+		select @mensaje;
+		return;
+	end 
+if not exists (select 1 from Empleado e where e.IdEmp= @IdEmp)
+begin
+	set @mensaje = 'El empleado no existe en la tabla empleado'
+	select @mensaje;
+	return;
+end 
+
+if exists (select r.IdRepara
+            from Repara r
+            where r.NumSerie = @NumSerie 
+			 and r.IdEmp = @IdEmp 
+              and r.IdProd = @IdProd 
+              and CONVERT(DATE, FchRepara) = CONVERT(DATE, @fecha))
+        begin
+            set @mensaje = 'El empleado ya tiene una reparación para la misma unidad hoy';
+            select @mensaje;
+            return;
+        end
+
+if(0 > @CostoRepara)
+	begin
+		set @mensaje = 'El costo de reparación no puede ser negativo.'
+		select @mensaje;
+		return;
+	end
+
+--Si no pasa nanda de lo anterior 
+INSERT INTO Repara (NumSerie,IdProd,IdEmp,FchRepara,CostoRepara, StsRepara,IdEmpQA)
+        VALUES ( @NumSerie, @IdProd,@IdEmp,@fecha,@CostoRepara,'Iniciado',NULL);
+		set @mensaje = 'Reparacion insertada.'
+		select @mensaje;
+		return;
+
+--------
+end try
+	begin catch
+		set @mensaje = 'Error';
+		select @mensaje;
+	end catch
+end;
+
+Función
+CREATE FUNCTION fn_CalcularTiempoReparacion
+(
+	@NumSerie CHAR(10),
+	@IdProd INT
+)
+RETURNS INT
+AS
+BEGIN
+	DECLARE @Resultado INT;
+
+	SELECT @Resultado = COUNT(DISTINCT CAST(r.FchRepara AS DATE))
+	FROM Repara r
+	WHERE r.NumSerie = @NumSerie
+	AND r.IdProd = @IdProd;
+
+	IF @Resultado = 0
+	SET @Resultado = NULL;
+
+	RETURN @Resultado;
+END;
+
+Triggers
+CREATE TRIGGER trg_ControlEstadoReparacion
+ON Repara
+AFTER UPDATE
+AS
+BEGIN
+	INSERT INTO HistoricoReparacion (IdRepara, NumSerie, IdProd, EstadoAnterior, EstadoNuevo)
+	SELECT i.IdRepara, i.NumSerie, i.IdProd, d.StsRepara, i.StsRepara
+	FROM inserted i
+	JOIN deleted d ON d.IdRepara = i.IdRepara
+	WHERE i.StsRepara = 'Terminado'
+	OR i.StsRepara = 'Cancelado';
+END;
+CREATE TRIGGER trg_PrevenirEliminacionReparaciones
+ON Repara
+INSTEAD OF DELETE
+AS
+BEGIN
+	DELETE r FROM Repara r
+ 	JOIN deleted d ON r.IdRepara = d.IdRepara
+	WHERE r.StsRepara = 'Iniciado'
+	OR r.StsRepara = 'Cancelado';
+
+	INSERT INTO HistoricoEliminacionReparaciones (IdRepara, NumSerie, IdProd, StsRepara)
+	SELECT d.IdRepara, d.NumSerie, d.IdProd, d.StsRepara
+	FROM deleted d
+	WHERE d.StsRepara = 'Iniciado'
+	OR d.StsRepara = 'Cancelado';
+
+	SELECT d.IdRepara, d.NumSerie, d.IdProd, d.StsRepara, 'No se permite eliminar' AS Mensaje
+	FROM deleted d
+	WHERE d.StsRepara = 'En testing'
+	OR d.StsRepara = 'Terminado';
+END;
+
+Vista
+CREATE VIEW vw_ReparacionesActivas
+AS
+SELECT r.IdRepara, r.NumSerie, r.IdProd, p.DscProd, e.NomEmp, r.FchRepara, r.StsRepara 
+FROM Repara r
+JOIN Producto p ON r.IdProd = p.IdProd
+JOIN Empleado e ON e.IdEmp = r.IdEmp
+WHERE r.StsRepara = 'Iniciado'
+OR r.StsRepara = 'En testing';
+
+MongoDB
+show dbs
+
+use reparaciones
+
+show collections
+
+db.reparaciones.find()
+
+db.reparaciones.insertOne({
+    "idRepara": "REP-123",
+    "NumSerie": "123",
+    "idEmp": "EMP-123",
+    "idEmpQA": "EMPQA-123",
+    "costoRepara": 2000,
+    "stsRepara": "Iniciado",
+    "idProd": "PROD-123",
+    "fchRepara": "12-06-2025",
+    "historial": [
+         {
+            "idEvento": "EVE-123",
+            "accion": "Se identifico el problema",
+            "descripcion": "Al equipo no le anda la pantalla debido a descuido",
+            "notas": [
+                "Se identifica el problema de la pantalla y se procede a enviar a reparacion"
+                ],
+            "fecha": ISODate("2025-05-14T14:00:00Z"),
+            "adjuntos": [
+                {
+                    "tipo": "imagen",
+                    "descripcion": "Foto de pantalla descuidada",
+                    "url": "imagenesAdjuntas/pantalla-03.jpg"
+                }
+            ]
+        },
+        {
+            "idEvento": "EVE-456",
+            "accion": "Reemplazo de pieza",
+            "descripcion": "Se le cambia la pieza",
+            "notas": [
+                "Se le cambio la pantalla"
+                ],
+            "fecha": ISODate("2025-05-16T14:15:00Z"),
+            "adjuntos": [
+                {
+                    "tipo": "imagen",
+                    "descripcion": "Foto de pantalla cambiada",
+                    "url": "imagenesAdjuntas/pantalla-03.jpg"
+                },
+                {
+                    "tipo": "documento",
+                    "descripcion": "Guia de cuidado de pantallas",
+                    "url": "documentosAdjuntos/pantalla-guia.pdf"
+                }
+            ]
+        }
+        
+    ]
+
+})
+
+db.reparaciones.insertOne({
+    "idRepara": "REP-234",
+    "NumSerie": "234",
+    "idEmp": "EMP-234",
+    "idEmpQA": "EMPQA-234",
+    "costoRepara": 5000,
+    "stsRepara": "En proceso",
+    "idProd": "PROD-234",
+    "fchRepara": "24-05-2025",
+    "historial": [
+         {
+            "idEvento": "EVE-234",
+            "accion": "Se identifico el problema",
+            "descripcion": "El equipo tiene sucia la placa",
+            "notas": [
+                "Se identifica el problema de la placa y se procede a enviar a reparacion"
+                ],
+            "fecha": ISODate("2025-05-25T14:00:00Z"),
+            "adjuntos": [
+                {
+                    "tipo": "documento",
+                    "descripcion": "Archivo de presentacion de limpieza de placa sucia",
+                    "url": "documentosAdjuntos/placa-05.pdf"
+                }
+            ]
+        },
+        {
+            "idEvento": "EVE-345",
+            "accion": "Limpieza",
+            "descripcion": "Se le limpia la placa al dispositivo",
+            "notas": [
+                "Se limpio satisfactoriamente"
+                ],
+            "fecha": ISODate("2025-05-25T14:00:00Z")
+        }
+        ]
+})
+
+
+
+
+
+
+//Consulta 1
+db.reparaciones.find({"idRepara": "REP-123"}, {"historial": 1})
+
+//Consulta 2
+db.reparaciones.find({
+    $or: [
+    { "historial.descripcion": { $regex: "placa", $options: "i" } },
+    { "historial.notas": { $regex: "placa", $options: "i"  } },
+    { "historial.accion": { $regex: "placa", $options: "i"  } }
+  ]
+})
+
+//Consulta 3
+db.reparaciones.find({"historial.adjuntos.tipo": "imagen"})
+
+//Consulta 4
+db.reparaciones.count({
+    "historial.accion": "Reemplazo de pieza"
+})
